@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ねこ vs とぶウサギ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    position:fixed; inset:0;
+    background:#2a2550;
+    font-family:'Zen Maru Gothic', sans-serif;
+    touch-action:none;
+    overscroll-behavior:none;
+  }
+  #gameCanvas { display:block; width:100%; height:100%; touch-action:none; }
+
+  #overlay {
+    position:fixed; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; color:#fff6f2;
+    background:linear-gradient(180deg, #2a2560 0%, #4a3f8f 55%, #7a6fc4 100%);
+    padding:32px;
+  }
+  #overlay h1 {
+    font-size:clamp(24px, 7.5vw, 34px);
+    font-weight:900;
+    letter-spacing:.02em;
+    line-height:1.5;
+    text-shadow:0 3px 0 rgba(40,30,80,.35);
+  }
+  #overlay .sub {
+    margin-top:14px;
+    font-size:clamp(12px, 3.4vw, 14px);
+    font-weight:500;
+    color:#fdf3ff;
+    opacity:.92;
+    line-height:1.9;
+  }
+  #overlay .icons { font-size:52px; margin:12px 0; filter:drop-shadow(0 6px 8px rgba(40,20,80,.35)); }
+  #startBtn, #retryBtn {
+    margin-top:24px;
+    padding:15px 42px;
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-size:17px;
+    font-weight:700;
+    color:#6b3d1f;
+    background:#ffcfe0;
+    border:none;
+    border-radius:999px;
+    box-shadow:0 6px 0 #e08fac, 0 10px 18px rgba(0,0,0,.25);
+    letter-spacing:.04em;
+  }
+  #startBtn:active, #retryBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #e08fac; }
+
+  #hud {
+    position:fixed; top:0; left:0; right:0;
+    display:none;
+    justify-content:space-between; align-items:flex-start;
+    padding:12px 16px;
+    padding-top:calc(12px + env(safe-area-inset-top));
+    pointer-events:none;
+    color:#fff6f2;
+    text-shadow:0 2px 4px rgba(30,20,60,.5);
+    z-index:5;
+    font-family:'Zen Maru Gothic', sans-serif;
+  }
+  #hud .score { font-size:19px; font-weight:700; }
+  #hud .wave { font-size:12px; opacity:.85; margin-top:2px; font-weight:500;}
+  #hud .lives { font-size:19px; letter-spacing:2px; }
+
+  #bombBtn {
+    position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom));
+    width:64px; height:64px; border-radius:50%;
+    display:none; align-items:center; justify-content:center;
+    font-size:28px;
+    background:#3a3568;
+    border:3px solid #5f5896;
+    color:#fff;
+    z-index:6;
+    touch-action:manipulation;
+    transition:transform .12s;
+    padding:0;
+  }
+  #bombBtn .ring {
+    position:absolute; inset:-3px; border-radius:50%;
+    background:conic-gradient(#ffd76a calc(var(--p,0)*1%), transparent 0);
+    -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+    mask:radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+  }
+  #bombBtn .icon { position:relative; z-index:1; }
+  #bombBtn.ready {
+    background:#ffd76a;
+    border-color:#fff3c2;
+    color:#6b3d1f;
+    box-shadow:0 0 18px 4px rgba(255,215,106,0.75);
+    animation:bombPulse 1s infinite;
+  }
+  #bombBtn:active { transform:scale(0.9); }
+  @keyframes bombPulse {
+    0%,100% { transform:scale(1); }
+    50% { transform:scale(1.08); }
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div>
+    <div class="score">スコア <span id="scoreVal">0</span></div>
+    <div class="wave">ウェーブ <span id="waveVal">1</span></div>
+  </div>
+  <div class="lives" id="livesVal">🐱🐱🐱🐱🐱</div>
+</div>
+
+<button id="bombBtn"><span class="ring" id="bombRing"></span><span class="icon">💣</span></button>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="overlay">
+  <div class="icons">🐱🐇</div>
+  <h1>ねこ vs とぶウサギ</h1>
+  <div class="sub">
+    ドラッグで ねこ を うごかそう<br>
+    はなしても じどうで 鈴(すず)を はっしゃ<br>
+    お花の垣根で 攻撃を ふせげる<br>
+    たまに 金色のウサギが とおる、うちおとすと ボーナス!<br>
+    右下のボムは 5匹たおすと つかえる、狙った場所を 一掃!
+  </div>
+  <button id="startBtn">はじめる</button>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const hud = document.getElementById('hud');
+  const scoreVal = document.getElementById('scoreVal');
+  const waveVal = document.getElementById('waveVal');
+  const livesVal = document.getElementById('livesVal');
+  const startBtn = document.getElementById('startBtn');
+  const bombBtn = document.getElementById('bombBtn');
+  const bombRing = document.getElementById('bombRing');
+
+  let W, H, DPR;
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', () => { resize(); resetPlayer(); if(state==='playing') makeShields(); });
+  resize();
+
+  // Safari: ラバーバンドスクロールやピンチズームでゲームが暴発しないよう保険をかける
+  document.addEventListener('touchmove', e => { e.preventDefault(); }, { passive:false });
+  document.addEventListener('gesturestart', e => { e.preventDefault(); });
+
+  // ---------- cute character drawing ----------
+  function drawEye(x, y, size, closed){
+    if(closed){
+      ctx.strokeStyle = '#3a2a20';
+      ctx.lineWidth = size*0.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(x, y, size*0.9, Math.PI*0.12, Math.PI*0.88);
+      ctx.stroke();
+      return;
+    }
+    ctx.fillStyle = '#3a2a20';
+    ctx.beginPath(); ctx.ellipse(x, y, size*0.68, size, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.ellipse(x-size*0.25, y-size*0.35, size*0.24, size*0.3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x+size*0.22, y+size*0.28, size*0.13, size*0.16, 0, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawCat(cx, cy, hidden){
+    if(hidden) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // tail
+    ctx.strokeStyle = '#efab60';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(15, 12);
+    ctx.quadraticCurveTo(30, 8, 25, -8);
+    ctx.stroke();
+
+    // paws
+    ctx.fillStyle = '#fff4e4';
+    ctx.beginPath(); ctx.ellipse(-11, 23, 6.5, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(11, 23, 6.5, 5, 0, 0, Math.PI*2); ctx.fill();
+
+    // body
+    const bodyGrad = ctx.createRadialGradient(-6,-2,4, 0,10,26);
+    bodyGrad.addColorStop(0,'#ffd9a3');
+    bodyGrad.addColorStop(1,'#f0a85e');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath(); ctx.ellipse(0, 10, 19, 16, 0, 0, Math.PI*2); ctx.fill();
+
+    // ears
+    ctx.fillStyle = '#f0a85e';
+    ctx.beginPath(); ctx.moveTo(-17,-23); ctx.lineTo(-23,-40); ctx.lineTo(-4,-27); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(17,-23); ctx.lineTo(23,-40); ctx.lineTo(4,-27); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffc3d2';
+    ctx.beginPath(); ctx.moveTo(-15,-25); ctx.lineTo(-19,-36); ctx.lineTo(-8,-28); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(15,-25); ctx.lineTo(19,-36); ctx.lineTo(8,-28); ctx.closePath(); ctx.fill();
+
+    // head
+    const headGrad = ctx.createRadialGradient(-6,-20,4, 0,-13,22);
+    headGrad.addColorStop(0,'#ffe4bb');
+    headGrad.addColorStop(1,'#f2a660');
+    ctx.fillStyle = headGrad;
+    ctx.beginPath(); ctx.ellipse(0,-13,19,17,0,0,Math.PI*2); ctx.fill();
+
+    // blush
+    ctx.fillStyle = 'rgba(255,140,155,0.55)';
+    ctx.beginPath(); ctx.ellipse(-12,-6,4.5,3,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(12,-6,4.5,3,0,0,Math.PI*2); ctx.fill();
+
+    // eyes
+    drawEye(-7.5, -13, 4.4, false);
+    drawEye(7.5, -13, 4.4, false);
+
+    // nose
+    ctx.fillStyle = '#d97a86';
+    ctx.beginPath(); ctx.moveTo(-2,-5); ctx.lineTo(2,-5); ctx.lineTo(0,-2.2); ctx.closePath(); ctx.fill();
+
+    // mouth
+    ctx.strokeStyle = '#8a5a3a';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(0,-2.2); ctx.quadraticCurveTo(-4,2,-7.5,0);
+    ctx.moveTo(0,-2.2); ctx.quadraticCurveTo(4,2,7.5,0);
+    ctx.stroke();
+
+    // whiskers
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1;
+    [[-15,-9,-31,-11],[-15,-6,-31,-6],[-15,-3,-31,0]].forEach(p=>{
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(p[2],p[3]); ctx.stroke();
+    });
+    [[15,-9,31,-11],[15,-6,31,-6],[15,-3,31,0]].forEach(p=>{
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(p[2],p[3]); ctx.stroke();
+    });
+
+    ctx.restore();
+  }
+
+  function drawRabbit(cx, cy, bodyColor, earColor, dizzy, sparkle){
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // little wings
+    ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.beginPath(); ctx.ellipse(-14,5,8.5,4.6,0.55,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(14,5,8.5,4.6,-0.55,0,Math.PI*2); ctx.fill();
+
+    // ears
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath(); ctx.ellipse(-7,-19,4.2,15.5,-0.12,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(7,-19,4.2,15.5,0.12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = earColor;
+    ctx.beginPath(); ctx.ellipse(-7,-19,2.1,11.5,-0.12,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(7,-19,2.1,11.5,0.12,0,Math.PI*2); ctx.fill();
+
+    // body
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath(); ctx.ellipse(0,5,14.5,12,0,0,Math.PI*2); ctx.fill();
+    // head
+    ctx.beginPath(); ctx.ellipse(0,-5,12.5,11.5,0,0,Math.PI*2); ctx.fill();
+
+    // blush
+    ctx.fillStyle = 'rgba(255,140,155,0.5)';
+    ctx.beginPath(); ctx.ellipse(-8.5,-1,3,2,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(8.5,-1,3,2,0,0,Math.PI*2); ctx.fill();
+
+    // eyes
+    drawEye(-4.6,-5.5,3.2, dizzy);
+    drawEye(4.6,-5.5,3.2, dizzy);
+
+    // nose
+    ctx.fillStyle = '#e79aa3';
+    ctx.beginPath(); ctx.ellipse(0,-0.5,1.4,1.1,0,0,Math.PI*2); ctx.fill();
+
+    if(sparkle){
+      ctx.fillStyle = '#fff3c2';
+      const t = performance.now()/200;
+      [[-18,-14],[18,-10],[0,-24]].forEach((p,i)=>{
+        const s = 2 + Math.sin(t+i)*1;
+        drawStarShape(p[0], p[1], s);
+      });
+    }
+
+    ctx.restore();
+  }
+
+  function drawStarShape(x,y,r){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.beginPath();
+    for(let i=0;i<4;i++){
+      const a = i*Math.PI/2;
+      ctx.moveTo(0,0);
+      ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+      ctx.lineTo(Math.cos(a+0.3)*r*0.3, Math.sin(a+0.3)*r*0.3);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBell(x,y){
+    ctx.save();
+    ctx.translate(x,y);
+    const g = ctx.createRadialGradient(-1.5,-2,1, 0,0,6);
+    g.addColorStop(0,'#fff3c2');
+    g.addColorStop(1,'#ffbf3f');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,5.5,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(201,138,31,0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-3.5,1.5); ctx.lineTo(3.5,1.5); ctx.stroke();
+    ctx.fillStyle = '#c98a1f';
+    ctx.beginPath(); ctx.arc(0,2.4,1.1,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#c98a1f';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(0,-5.3,2.1,Math.PI,0); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCarrot(x,y){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.fillStyle = '#6ba362';
+    ctx.beginPath();
+    ctx.moveTo(0,-7); ctx.lineTo(-2.4,-2); ctx.lineTo(0,-3.5); ctx.lineTo(2.4,-2); ctx.closePath(); ctx.fill();
+    const g = ctx.createLinearGradient(0,-3,0,9);
+    g.addColorStop(0,'#ffb877');
+    g.addColorStop(1,'#f0894a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-4.5,-2.5);
+    ctx.quadraticCurveTo(0,-4,4.5,-2.5);
+    ctx.quadraticCurveTo(2.5,7,0,10);
+    ctx.quadraticCurveTo(-2.5,7,-4.5,-2.5);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------- state ----------
+  let state = 'idle';
+  let score = 0;
+  let wave = 1;
+  let lives = 5;
+  let invincibleT = 0;
+  let stars = [];
+  let bgClouds = [];
+  let floatingTexts = [];
+
+  const player = { x:0, y:0, w:40, h:44, targetX:null };
+
+  let bullets = [];
+  let enemyBullets = [];
+  let rabbits = [];
+  let rabbitDir = 1;
+  let rabbitSpeed = 22;
+  let fireTimer = 0;
+  let fireInterval = 0.42;
+  let waveTransitionT = 0;
+  let sunT = 0;
+
+  // bomb
+  const BOMB_KILL_TARGET = 5; // 撃墜5匹でチャージ完了
+  let bombKills = 0;
+  let bombFlash = 0;
+  let bombBlast = null; // {x,y,r,t} 発動時の範囲リング演出
+  function bombRadius(){ return Math.min(W, H) * 0.4; }
+
+  // shields (flower hedge)
+  let shields = [];
+  const SHIELD_TEMPLATE = [
+    "..############..",
+    "################",
+    "################",
+    "################",
+    "################",
+    "################",
+    "################",
+    "######....######",
+    "#####......#####",
+    "####........####",
+  ];
+  const SHIELD_BLOCK = 4.4;
+  const HEDGE_COLORS = ['#8fdd8a','#79cf7e','#a2e695'];
+
+  function makeShields(){
+    shields = [];
+    const rows = SHIELD_TEMPLATE.length;
+    const cols = SHIELD_TEMPLATE[0].length;
+    const shieldW = cols * SHIELD_BLOCK;
+    const count = 4;
+    const marginX = W * 0.12;
+    const usable = W - marginX*2 - shieldW;
+    for(let i=0;i<count;i++){
+      const cx = marginX + (count===1 ? usable/2 : usable*(i/(count-1)));
+      const grid = SHIELD_TEMPLATE.map(row => row.split('').map(ch => ch === '#'));
+      const variant = SHIELD_TEMPLATE.map(row => row.split('').map(ch => {
+        if(ch !== '#') return 0;
+        const r = Math.random();
+        if(r < 0.12) return 2; // flower accent
+        return r < 0.55 ? 0 : 1;
+      }));
+      shields.push({ ox: Math.round(cx), oy: Math.round(player.y - 130), grid, variant, blockSize: SHIELD_BLOCK, rows, cols });
+    }
+  }
+
+  function shieldHit(s, x, y){
+    const col = Math.floor((x - s.ox) / s.blockSize);
+    const row = Math.floor((y - s.oy) / s.blockSize);
+    if(row<0||row>=s.rows||col<0||col>=s.cols) return false;
+    if(!s.grid[row][col]) return false;
+    for(let dr=-1;dr<=1;dr++){
+      for(let dc=-1;dc<=1;dc++){
+        if(Math.abs(dr)+Math.abs(dc) > 1) continue;
+        const rr=row+dr, cc=col+dc;
+        if(rr>=0&&rr<s.rows&&cc>=0&&cc<s.cols) s.grid[rr][cc] = false;
+      }
+    }
+    return true;
+  }
+
+  function drawShields(){
+    for(const s of shields){
+      for(let r=0;r<s.rows;r++){
+        for(let c=0;c<s.cols;c++){
+          if(!s.grid[r][c]) continue;
+          const cx = s.ox + c*s.blockSize + s.blockSize/2;
+          const cy = s.oy + r*s.blockSize + s.blockSize/2;
+          const v = s.variant[r][c];
+          ctx.fillStyle = HEDGE_COLORS[v % HEDGE_COLORS.length];
+          ctx.beginPath();
+          ctx.arc(cx, cy, s.blockSize*0.62, 0, Math.PI*2);
+          ctx.fill();
+          if(v === 2){
+            ctx.fillStyle = '#fff3c2';
+            ctx.beginPath();
+            ctx.arc(cx, cy, s.blockSize*0.2, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+  }
+
+  // golden rabbit bonus
+  let goldRabbit = null;
+  let goldTimer = 6 + Math.random()*6;
+  const GOLD_VALUES = [50,100,150,300];
+
+  function resetPlayer(){
+    player.x = W/2;
+    player.y = H - 110;
+    lastTouchX = W/2;
+    lastTouchY = H*0.4;
+  }
+
+  function makeWave(n){
+    rabbits = [];
+    const cols = Math.min(6, 4 + Math.floor(n/2));
+    const rows = Math.min(4, 2 + Math.floor(n/3));
+    const marginX = W * 0.14;
+    const usableW = W - marginX*2;
+    const gapX = usableW / (cols - 1 || 1);
+    const gapY = 46;
+    const startY = 80;
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        rabbits.push({
+          x: marginX + c*gapX,
+          y: startY + r*gapY,
+          hp: 1 + (r===0 && n>2 ? 1:0),
+          maxHp: 1 + (r===0 && n>2 ? 1:0),
+          w: 38, h: 24,
+          alive:true,
+          bob: Math.random()*Math.PI*2
+        });
+      }
+    }
+    rabbitSpeed = 13 + n*2.4;
+    fireInterval = Math.max(0.3, 0.62 - n*0.015);
+  }
+
+  function initBg(){
+    stars = [];
+    for(let i=0;i<60;i++){
+      stars.push({ x:Math.random()*2000, y:Math.random()*2000, r: Math.random()*1.6+0.5, phase: Math.random()*Math.PI*2 });
+    }
+    bgClouds = [];
+    for(let i=0;i<4;i++){
+      bgClouds.push({
+        x: Math.random()*W, y: 60 + Math.random()*H*0.4,
+        s: 0.5 + Math.random()*0.7, speed: 3 + Math.random()*5
+      });
+    }
+  }
+  initBg();
+
+  function startGame(){
+    score = 0; wave = 1; lives = 5; invincibleT = 0;
+    bullets = []; enemyBullets = []; floatingTexts = [];
+    goldRabbit = null; goldTimer = 6 + Math.random()*6;
+    bombKills = 0; bombFlash = 0; bombBlast = null;
+    resetPlayer();
+    makeWave(wave);
+    makeShields();
+    state = 'playing';
+    overlay.style.display = 'none';
+    hud.style.display = 'flex';
+    bombBtn.style.display = 'flex';
+    updateHud();
+    last = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function triggerBomb(){
+    if(state !== 'playing' || bombKills < BOMB_KILL_TARGET) return;
+    const r = bombRadius();
+    const cx = lastTouchX, cy = lastTouchY;
+    let count = 0;
+    for(const c of rabbits){
+      if(!c.alive) continue;
+      const dx = c.x-cx, dy = c.y-cy;
+      if(dx*dx + dy*dy <= r*r){ c.alive = false; count++; }
+    }
+    if(count > 0) score += count * 10;
+    enemyBullets = enemyBullets.filter(eb => {
+      const dx = eb.x-cx, dy = eb.y-cy;
+      return dx*dx + dy*dy > r*r;
+    });
+    bombKills = 0;
+    bombFlash = 1;
+    bombBlast = { x:cx, y:cy, r, t:0 };
+    floatingTexts.push({ x: cx, y: cy - 20, text: 'ボム!', life: 1.2 });
+    updateHud();
+    if(rabbits.every(c => !c.alive)){
+      state = 'wavecleared';
+      waveTransitionT = 0;
+      score += 50;
+      updateHud();
+    }
+  }
+
+  function updateHud(){
+    scoreVal.textContent = score;
+    waveVal.textContent = wave;
+    livesVal.textContent = '🐱'.repeat(Math.max(lives,0)) || '—';
+  }
+
+  function updateBombUI(){
+    const pct = Math.min(100, (bombKills / BOMB_KILL_TARGET) * 100);
+    bombRing.style.setProperty('--p', pct.toFixed(1));
+    bombBtn.classList.toggle('ready', bombKills >= BOMB_KILL_TARGET);
+  }
+
+  // ---------- input ----------
+  let pointerActive = false;
+  let lastTouchX = 0, lastTouchY = 0; // ボムの照準先(直近のタップ/ドラッグ位置)
+  function pointerToX(clientX){
+    return Math.max(player.w/2, Math.min(W - player.w/2, clientX));
+  }
+  canvas.addEventListener('pointerdown', e => {
+    pointerActive = true;
+    player.targetX = pointerToX(e.clientX);
+    lastTouchX = e.clientX;
+    lastTouchY = e.clientY;
+  });
+  canvas.addEventListener('pointermove', e => {
+    if(!pointerActive) return;
+    player.targetX = pointerToX(e.clientX);
+    lastTouchX = e.clientX;
+    lastTouchY = e.clientY;
+  });
+  window.addEventListener('pointerup', () => { pointerActive = false; });
+  window.addEventListener('pointercancel', () => { pointerActive = false; });
+  window.addEventListener('blur', () => { pointerActive = false; });
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden){ pointerActive = false; last = performance.now(); }
+  });
+  startBtn.addEventListener('click', startGame);
+  bombBtn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    triggerBomb();
+  });
+
+  function drawBgClouds(dt){
+    ctx.save();
+    for(const bc of bgClouds){
+      bc.x += bc.speed * dt;
+      if(bc.x - 60*bc.s > W) bc.x = -60*bc.s;
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.ellipse(bc.x, bc.y, 34*bc.s, 15*bc.s, 0, 0, Math.PI*2);
+      ctx.ellipse(bc.x+22*bc.s, bc.y+4*bc.s, 24*bc.s, 12*bc.s, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawStars(t){
+    ctx.save();
+    for(const s of stars){
+      const x = s.x % W, y = s.y % H;
+      const a = 0.4 + 0.6*Math.abs(Math.sin(t*0.8 + s.phase));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#fff6f2';
+      ctx.beginPath();
+      ctx.arc(x, y, s.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawMoon(){
+    ctx.save();
+    const mx = W*0.82, my = H*0.16, r = Math.min(W,H)*0.09;
+    ctx.fillStyle = '#fff0d8';
+    ctx.beginPath(); ctx.arc(mx,my,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(230,205,170,0.45)';
+    ctx.beginPath(); ctx.arc(mx-r*0.35,my-r*0.2,r*0.18,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx+r*0.3,my+r*0.35,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, '#1e1e46');
+    g.addColorStop(0.55, '#453f8a');
+    g.addColorStop(1, '#7a6fc4');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // ---------- loop ----------
+  let last = performance.now();
+  let clock = 0;
+  function loop(now){
+    const dt = Math.min(0.033, (now-last)/1000);
+    last = now;
+    clock += dt;
+
+    drawSky();
+    drawStars(clock);
+    drawMoon();
+    drawBgClouds(dt);
+
+    if(state === 'playing'){
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    } else if(state === 'wavecleared'){
+      waveTransitionT += dt;
+      draw();
+      drawClearBurst(waveTransitionT);
+      if(waveTransitionT > 1.6){
+        wave++;
+        makeWave(wave);
+        makeShields();
+        bullets=[]; enemyBullets=[];
+        waveTransitionT = 0;
+        state = 'playing';
+        updateHud();
+      }
+      requestAnimationFrame(loop);
+    } else if(state === 'gameover'){
+      sunT += dt;
+      draw();
+      drawGameOver();
+      requestAnimationFrame(loop);
+    }
+  }
+
+  function update(dt){
+    if(player.targetX != null){
+      player.x += (player.targetX - player.x) * Math.min(1, dt*12);
+    }
+    fireTimer += dt;
+    if(fireTimer >= fireInterval){
+      fireTimer = 0;
+      bullets.push({ x: player.x, y: player.y - 26, hit:false });
+    }
+    for(const b of bullets) b.y -= 420*dt;
+    bullets = bullets.filter(b => b.y > -20 && !b.hit);
+
+    let minX = Infinity, maxX = -Infinity;
+    for(const c of rabbits){ if(!c.alive) continue; minX=Math.min(minX,c.x-c.w/2); maxX=Math.max(maxX,c.x+c.w/2); }
+    for(const c of rabbits){
+      if(!c.alive) continue;
+      c.x += rabbitDir * rabbitSpeed * dt;
+      c.bob += dt*2;
+    }
+    if(maxX + rabbitDir*rabbitSpeed*dt > W-10 || minX + rabbitDir*rabbitSpeed*dt < 10){
+      rabbitDir *= -1;
+      for(const c of rabbits) if(c.alive) c.y += 16;
+    }
+
+    const aliveRabbits = rabbits.filter(c=>c.alive);
+    if(aliveRabbits.length && Math.random() < 0.5*dt*(1+wave*0.06)){
+      const shooter = aliveRabbits[Math.floor(Math.random()*aliveRabbits.length)];
+      enemyBullets.push({ x: shooter.x, y: shooter.y+10, hit:false });
+    }
+    for(const eb of enemyBullets) eb.y += 170*dt;
+    enemyBullets = enemyBullets.filter(eb => eb.y < H+20 && !eb.hit);
+
+    // golden rabbit spawn/update
+    if(goldRabbit){
+      goldRabbit.x += goldRabbit.dir * goldRabbit.speed * dt;
+      if(goldRabbit.x < -50 || goldRabbit.x > W+50) goldRabbit = null;
+    } else {
+      goldTimer -= dt;
+      if(goldTimer <= 0){
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        goldRabbit = {
+          x: dir === 1 ? -40 : W+40, y: 46,
+          dir, speed: 75 + wave*4,
+          value: GOLD_VALUES[Math.floor(Math.random()*GOLD_VALUES.length)]
+        };
+        goldTimer = 9 + Math.random()*8;
+      }
+    }
+
+    // player bullets vs shields
+    for(const b of bullets){
+      if(b.hit) continue;
+      for(const s of shields){ if(shieldHit(s, b.x, b.y)) { b.hit = true; break; } }
+    }
+    // enemy bullets vs shields
+    for(const eb of enemyBullets){
+      if(eb.hit) continue;
+      for(const s of shields){ if(shieldHit(s, eb.x, eb.y)) { eb.hit = true; break; } }
+    }
+
+    // player bullets vs golden rabbit
+    if(goldRabbit){
+      for(const b of bullets){
+        if(b.hit) continue;
+        if(Math.abs(b.x-goldRabbit.x) < 28 && Math.abs(b.y-goldRabbit.y) < 18){
+          b.hit = true;
+          score += goldRabbit.value;
+          floatingTexts.push({ x: goldRabbit.x, y: goldRabbit.y, text: '+'+goldRabbit.value, life: 1 });
+          goldRabbit = null;
+          if(bombKills < BOMB_KILL_TARGET) bombKills++;
+          break;
+        }
+      }
+    }
+
+    // player bullets vs rabbits
+    for(const b of bullets){
+      if(b.hit) continue;
+      for(const c of rabbits){
+        if(!c.alive) continue;
+        const dx = b.x-c.x, dy=b.y-c.y;
+        if(Math.abs(dx) < c.w/2 && Math.abs(dy) < c.h/2){
+          c.hp--;
+          b.hit = true;
+          if(c.hp<=0){
+            c.alive=false;
+            score += 10;
+            if(bombKills < BOMB_KILL_TARGET) bombKills++;
+          }
+          break;
+        }
+      }
+    }
+
+    // enemy bullets vs player (無敵時間中はノーダメージ)
+    if(invincibleT > 0) invincibleT -= dt;
+    if(invincibleT <= 0){
+      for(const eb of enemyBullets){
+        if(eb.hit) continue;
+        const dx = eb.x-player.x, dy = eb.y-player.y;
+        if(Math.abs(dx) < player.w*0.4 && Math.abs(dy) < player.h*0.5){
+          eb.hit = true;
+          lives--;
+          invincibleT = 1.4;
+          updateHud();
+          if(lives<=0){ state='gameover'; sunT=0; }
+          break;
+        }
+      }
+    }
+
+    bullets = bullets.filter(b => !b.hit);
+    enemyBullets = enemyBullets.filter(eb => !eb.hit);
+
+    // ウサギが最前線に到達したら即ゲームオーバーにせず、ライフを1消費して後退させる
+    // (無敵時間中は判定しない: 被弾直後に連続でライフが飛ぶバグの原因だった)
+    if(state === 'playing' && invincibleT <= 0){
+      let breached = false;
+      for(const c of rabbits){
+        if(c.alive && c.y > player.y - 40) breached = true;
+      }
+      if(breached){
+        lives--;
+        invincibleT = 1.4;
+        updateHud();
+        if(lives<=0){
+          state = 'gameover';
+          sunT = 0;
+        } else {
+          for(const c of rabbits) if(c.alive) c.y -= 90;
+        }
+      }
+    }
+
+    if(rabbits.every(c => !c.alive)){
+      state = 'wavecleared';
+      waveTransitionT = 0;
+      score += 50;
+      updateHud();
+    }
+
+    for(const ft of floatingTexts){ ft.life -= dt; ft.y -= 24*dt; }
+    floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+
+    // ボムの演出更新(チャージは撃墜数ベースなのでここでは時間経過させない)
+    if(bombFlash > 0) bombFlash = Math.max(0, bombFlash - dt*2.2);
+    if(bombBlast){
+      bombBlast.t += dt;
+      if(bombBlast.t > 0.6) bombBlast = null;
+    }
+    updateBombUI();
+
+    updateHud();
+  }
+
+  function drawClearBurst(t){
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, t*1.4);
+    const cx = W/2, cy = H*0.32, r = 40 + t*30;
+    const g = ctx.createRadialGradient(cx,cy,4,cx,cy,r*2.2);
+    g.addColorStop(0, 'rgba(255,207,224,0.9)');
+    g.addColorStop(1, 'rgba(255,207,224,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx,cy,r*2.2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff0d8';
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = '#6b3d1f';
+    ctx.font = '900 20px "Zen Maru Gothic"';
+    ctx.textAlign = 'center';
+    ctx.fillText('つかまえた!', W/2, H*0.55);
+    ctx.restore();
+  }
+
+  function draw(){
+    drawShields();
+    for(const c of rabbits){
+      if(!c.alive) continue;
+      const damaged = c.hp < c.maxHp;
+      const body = damaged ? '#d6cec0' : '#faf3e6';
+      const ear = damaged ? '#e3b8c0' : '#ffc3d2';
+      drawRabbit(c.x, c.y + Math.sin(c.bob)*2, body, ear, damaged, false);
+    }
+    if(goldRabbit){
+      drawRabbit(goldRabbit.x, goldRabbit.y + Math.sin(performance.now()/150)*2, '#ffd76a', '#fff3c2', false, true);
+    }
+    for(const b of bullets){
+      drawBell(b.x, b.y);
+    }
+    for(const eb of enemyBullets){
+      drawCarrot(eb.x, eb.y);
+    }
+    const flashing = invincibleT > 0 && Math.floor(invincibleT*10) % 2 === 0;
+    if(state !== 'gameover'){
+      drawCat(player.x, player.y, flashing);
+    }
+
+    if(bombKills >= BOMB_KILL_TARGET && state === 'playing'){
+      ctx.save();
+      const pulse = 0.6 + Math.sin(performance.now()/220)*0.4;
+      ctx.globalAlpha = 0.35 + pulse*0.25;
+      ctx.strokeStyle = '#ffd76a';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6,5]);
+      ctx.beginPath();
+      ctx.arc(lastTouchX, lastTouchY, bombRadius(), 0, Math.PI*2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(lastTouchX, lastTouchY, 4, 0, Math.PI*2);
+      ctx.fillStyle = '#ffd76a';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '700 13px "Zen Maru Gothic"';
+    for(const ft of floatingTexts){
+      ctx.globalAlpha = Math.max(0, ft.life);
+      ctx.fillStyle = '#ffd76a';
+      ctx.fillText(ft.text, ft.x, ft.y);
+    }
+    ctx.restore();
+
+    if(bombBlast){
+      ctx.save();
+      const alpha = Math.max(0, 1 - bombBlast.t/0.6);
+      const r = bombBlast.r * (1 + bombBlast.t*0.25);
+      const g = ctx.createRadialGradient(bombBlast.x, bombBlast.y, 4, bombBlast.x, bombBlast.y, r);
+      g.addColorStop(0, `rgba(255,243,194,${0.55*alpha})`);
+      g.addColorStop(0.75, `rgba(255,243,194,${0.25*alpha})`);
+      g.addColorStop(1, 'rgba(255,243,194,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(bombBlast.x, bombBlast.y, r, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = `rgba(255,215,106,${0.85*alpha})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(bombBlast.x, bombBlast.y, r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawGameOver(){
+    if(bombBtn.style.display !== 'none') bombBtn.style.display = 'none';
+    ctx.save();
+    ctx.fillStyle = 'rgba(30,20,60,0.55)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#fff6f2';
+    ctx.textAlign = 'center';
+    ctx.font = '900 22px "Zen Maru Gothic"';
+    ctx.fillText('ウサギに にげられた…', W/2, H*0.42);
+    ctx.font = '500 13px "Zen Maru Gothic"';
+    ctx.fillText('スコア ' + score + '  (ウェーブ ' + wave + ')', W/2, H*0.42+36);
+    ctx.restore();
+
+    if(!document.getElementById('retryBtn')){
+      const btn = document.createElement('button');
+      btn.id = 'retryBtn';
+      btn.textContent = 'もういちど';
+      btn.style.position='fixed';
+      btn.style.left='50%'; btn.style.top='58%';
+      btn.style.transform='translate(-50%,0)';
+      document.body.appendChild(btn);
+      btn.addEventListener('click', () => {
+        btn.remove();
+        startGame();
+      });
+    }
+  }
+})();
+</script>
+</body>
+</html>
